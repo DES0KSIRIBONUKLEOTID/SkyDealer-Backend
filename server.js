@@ -28,7 +28,16 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword });
+    
+    const userRole = email === 'danyab554@gmail.com' ? 'ADMIN' : 'USER';
+    
+    const user = new User({ 
+      name, 
+      email, 
+      password: hashedPassword, 
+      role: userRole 
+    });
+    
     await user.save();
     res.status(201).json({ message: 'User created' });
   } catch (err) {
@@ -64,6 +73,18 @@ app.get('/api/planes', async (req, res) => {
     res.status(500).json({ error: 'Помилка отримання даних' });
   }
 });
+// Отримати ОДИН літак по ID
+app.get('/api/planes/:id', async (req, res) => {
+  try {
+    const plane = await Plane.findById(req.params.id);
+    if (!plane) {
+      return res.status(404).json({ error: 'Літак не знайдено' });
+    }
+    res.json(plane);
+  } catch (error) {
+    res.status(500).json({ error: 'Помилка отримання літака (можливо невірний формат ID)' });
+  }
+});
 
 // Додати новий літак
 app.post('/api/planes', async (req, res) => {
@@ -79,7 +100,7 @@ app.post('/api/planes', async (req, res) => {
 // Оновити літак по ID 
 app.put('/api/planes/:id', async (req, res) => {
   try {
-    //  потрібно щоб Mongoose повернув уже оновлений об'єкт а не старий
+    
     const updatedPlane = await Plane.findByIdAndUpdate(
       req.params.id, 
       req.body, 
