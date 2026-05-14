@@ -12,7 +12,9 @@ const Plane = require('./models/Plane');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 mongoose.connect(process.env.MONGO_URI, {
   family: 4 
@@ -55,10 +57,15 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, code } = req.body;
   const user = await User.findOne({ email });
   
   if (user && await bcrypt.compare(password, user.password)) {
+    
+    if (user.isTwoFactorEnabled && !code) {
+      return res.status(206).json({ requires2FA: true, message: "Потрібен код 2FA" });
+    }
+
     const token = jwt.sign(
       { id: user._id, role: user.role }, 
       process.env.JWT_SECRET, 
@@ -121,6 +128,20 @@ app.put('/api/users/profile/:id', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     res.status(400).json({ error: 'Update failed' });
+  }
+});
+
+app.post('/api/auth/2fa/toggle', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.isTwoFactorEnabled = !user.isTwoFactorEnabled;
+    await user.save();
+    
+    res.json({ isTwoFactorEnabled: user.isTwoFactorEnabled });
+  } catch (err) {
+    res.status(500).json({ error: 'Помилка зміни статусу 2FA' });
   }
 });
 
