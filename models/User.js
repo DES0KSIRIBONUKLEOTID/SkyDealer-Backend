@@ -4,8 +4,14 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, default: 'USER' }, // USER або ADMIN
-  avatar: { type: String, default: '' }
+  role: { type: String, default: 'USER' }, 
+  avatar: { type: String, default: '' },
+  
+
+  favorites: { type: [String], default: [] }, 
+  isTwoFactorEnabled: { type: Boolean, default: false }
+}, {
+  timestamps: true 
 });
 
 module.exports = mongoose.model('User', userSchema);
