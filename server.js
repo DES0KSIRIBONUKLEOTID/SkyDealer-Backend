@@ -14,16 +14,25 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Підключення до БД
 mongoose.connect(process.env.MONGO_URI, {
   family: 4 
 })
   .then(() => console.log('✅ MongoDB Connected'))
   .catch(err => console.log('❌ DB Error:', err));
 
-// --- AUTH ROUTES ---
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) return res.sendStatus(401);
+  
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+};
 
-// Реєстрація
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -45,7 +54,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Логін + Генерація JWT
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email });
@@ -56,51 +64,99 @@ app.post('/api/auth/login', async (req, res) => {
       process.env.JWT_SECRET, 
       { expiresIn: '24h' }
     );
-    res.json({ token, user: { name: user.name, email: user.email, role: user.role, avatar: user.avatar } });
+    res.json({ 
+      token, 
+      user: { 
+        id: user._id,
+        name: user.name, 
+        email: user.email, 
+        role: user.role, 
+        avatar: user.avatar,
+        favorites: user.favorites || [],
+        isTwoFactorEnabled: user.isTwoFactorEnabled || false
+      } 
+    });
   } else {
     res.status(401).json({ error: 'Invalid credentials' });
   }
 });
 
-// --- PLANE ROUTES ---
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
-// Отримати всі літаки
+    res.json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+      favorites: user.favorites || [],
+      isTwoFactorEnabled: user.isTwoFactorEnabled || false
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/users/profile/:id', authenticateToken, async (req, res) => {
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id, 
+      req.body, 
+      { new: true }
+    );
+    
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+      id: updatedUser._id,
+      name: updatedUser.name,
+      avatar: updatedUser.avatar,
+      favorites: updatedUser.favorites || [],
+      isTwoFactorEnabled: updatedUser.isTwoFactorEnabled || false
+    });
+  } catch (err) {
+    res.status(400).json({ error: 'Update failed' });
+  }
+});
+
 app.get('/api/planes', async (req, res) => {
   try {
     const planes = await Plane.find();
     res.json(planes);
   } catch (error) {
-    res.status(500).json({ error: 'Помилка отримання даних' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
-// Отримати ОДИН літак по ID
+
 app.get('/api/planes/:id', async (req, res) => {
   try {
     const plane = await Plane.findById(req.params.id);
     if (!plane) {
-      return res.status(404).json({ error: 'Літак не знайдено' });
+      return res.status(404).json({ error: 'Not found' });
     }
     res.json(plane);
   } catch (error) {
-    res.status(500).json({ error: 'Помилка отримання літака (можливо невірний формат ID)' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Додати новий літак
 app.post('/api/planes', async (req, res) => {
   try {
     const newPlane = new Plane(req.body);
     await newPlane.save();
     res.status(201).json(newPlane);
   } catch (error) {
-    res.status(400).json({ error: 'Помилка створення літака' });
+    res.status(400).json({ error: 'Creation failed' });
   }
 });
 
-// Оновити літак по ID 
 app.put('/api/planes/:id', async (req, res) => {
   try {
-    
     const updatedPlane = await Plane.findByIdAndUpdate(
       req.params.id, 
       req.body, 
@@ -108,27 +164,26 @@ app.put('/api/planes/:id', async (req, res) => {
     );
     
     if (!updatedPlane) {
-      return res.status(404).json({ error: 'Літак не знайдено' });
+      return res.status(404).json({ error: 'Not found' });
     }
     
     res.json(updatedPlane);
   } catch (err) {
-    res.status(400).json({ error: 'Помилка оновлення літака' });
+    res.status(400).json({ error: 'Update failed' });
   }
 });
 
-// Видалити літак по ID 
 app.delete('/api/planes/:id', async (req, res) => {
   try {
     const deletedPlane = await Plane.findByIdAndDelete(req.params.id);
     
     if (!deletedPlane) {
-      return res.status(404).json({ error: 'Літак не знайдено' });
+      return res.status(404).json({ error: 'Not found' });
     }
     
-    res.json({ message: 'Літак успішно видалено' });
+    res.json({ message: 'Deleted' });
   } catch (err) {
-    res.status(500).json({ error: 'Помилка видалення літака' });
+    res.status(500).json({ error: 'Deletion failed' });
   }
 });
 
